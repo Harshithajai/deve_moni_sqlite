@@ -1,6 +1,31 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import api from '../api';
+
+// 1. Define the API base URL
+const API_URL = import.meta.env.VITE_API_BASE_URL || "https://deve-moni-backend.onrender.com";
+
+// 2. Register function using proper endpoint path (/api/auth/register)
+const handleRegister = async (userData) => {
+  try {
+    const response = await fetch(`${API_URL}/api/auth/register`, {
+      method: "POST",
+      headers: { 
+        "Content-Type": "application/json" 
+      },
+      body: JSON.stringify(userData),
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.detail || "Registration failed");
+    }
+
+    return data;
+  } catch (error) {
+    console.error("Error registering user:", error);
+    throw error;
+  }
+};
 
 function RegisterPage() {
   const navigate = useNavigate();
@@ -33,22 +58,20 @@ function RegisterPage() {
     }
 
     try {
-      await api.post('/api/auth/register', formData);
+      await handleRegister(formData);
       setSuccess('Registration successful. Redirecting to login...');
       setTimeout(() => navigate('/login'), 1200);
     } catch (requestError) {
-      if (!requestError.response) {
-        setError('Backend unavailable. Please make sure the API server is running and MySQL is started.');
-        return;
+      const backendMessage = requestError.message || 'Registration failed.';
+      if (backendMessage === 'Failed to fetch') {
+        setError('Backend unavailable. Please make sure the API server is running and accessible.');
+      } else {
+        setError(backendMessage);
       }
-
-      const backendMessage = requestError.response?.data?.detail || 'Registration failed.';
-      setError(backendMessage);
     } finally {
       setLoading(false);
     }
   };
-
   return (
     <div className="auth-shell">
       <div className="auth-card">

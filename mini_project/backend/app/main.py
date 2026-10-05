@@ -50,17 +50,22 @@ from .schemas import (
 )
 from app.llm.service import process_caregiver_query
 
-# Allowed frontend origins. Set CORS_ORIGINS on the server to a comma-separated list,
-# e.g. https://devcare.netlify.app  (no trailing slash). Localhost stays allowed for dev.
+# Allowed frontend origins. Set CORS_ORIGINS on the server to a comma-separated list
 ALLOWED_ORIGINS = [
     o.strip().rstrip("/")
     for o in os.getenv("CORS_ORIGINS", "").split(",")
     if o.strip()
-] + ["http://localhost:5173", "http://localhost:5174"]
+] + [
+    "https://devcare-mini.netlify.app",
+    "http://localhost:5173",
+    "http://localhost:5174",
+]
 
 app = FastAPI(title="DevCare API", version="1.0.0")
+
 app.include_router(rag.router)
 app.include_router(activity.router)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://devcare-mini.netlify.app", "http://localhost:5173"],
@@ -195,7 +200,6 @@ def ask_ai_assistant(
 ):
     """Evidence-Grounded AI Caregiver Assistant endpoint"""
     try:
-        # Verify child access/ownership
         child = db.query(Child).filter(Child.id == req.child_id).first()
         if not child:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Child profile not found.")
@@ -205,7 +209,6 @@ def ask_ai_assistant(
         elif current_user.role == "professional" and not professional_can_access_child(current_user, child):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This child has not been shared with you.")
 
-        # Fetch recent observations for contextual grounding
         obs = (
             db.query(Observation)
             .filter(Observation.child_id == child.id)
@@ -215,10 +218,8 @@ def ask_ai_assistant(
         )
         obs_texts = [f"{o.observation_date}: {o.observation_text}" for o in obs]
 
-        # Execute RAG + LLM analysis
         result = process_caregiver_query(question=req.question, child_observations=obs_texts)
 
-        # Log AI interaction
         interaction = AIInteraction(
             user_id=current_user.id,
             child_id=child.id,
@@ -228,7 +229,6 @@ def ask_ai_assistant(
         )
         db.add(interaction)
         
-        # Log activity
         log = ActivityLog(
             user_id=current_user.id,
             action="ai_query",
@@ -250,7 +250,6 @@ def ask_ai_assistant(
 # ==================== CHILD MANAGEMENT (PARENTS ONLY) ====================
 
 def get_child_for_parent(db: Session, child_id: int, parent_id: int) -> Child:
-    """Get a child only if the parent owns it"""
     child = db.query(Child).filter(Child.id == child_id, Child.parent_id == parent_id).first()
     if child is None:
         raise HTTPException(
@@ -261,7 +260,6 @@ def get_child_for_parent(db: Session, child_id: int, parent_id: int) -> Child:
 
 
 def get_observation_for_parent(db: Session, observation_id: int, parent_id: int) -> Observation:
-    """Get an observation only if the parent owns the child"""
     observation = (
         db.query(Observation)
         .join(Child)
@@ -288,7 +286,6 @@ def create_child(
         db.commit()
         db.refresh(db_child)
         
-        # Log activity
         log = ActivityLog(
             user_id=current_user.id,
             action="child_creation",
@@ -438,7 +435,6 @@ def get_observations_for_child(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # Allow both parent and professional to view observations of shared children
     if current_user.role == "parent":
         get_child_for_parent(db, child_id, current_user.id)
     elif current_user.role == "professional":
@@ -534,7 +530,6 @@ def get_child_progress(
     start_date: date | None = Query(default=None),
     end_date: date | None = Query(default=None),
 ):
-    # Verify access
     if current_user.role == "parent":
         get_child_for_parent(db, child_id, current_user.id)
     elif current_user.role == "professional":
@@ -623,7 +618,6 @@ def share_child_with_professional(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_parent),
 ):
-    """Parent shares a child with a professional"""
     try:
         child = get_child_for_parent(db, child_id, current_user.id)
         professional = db.query(User).filter(User.id == share_request.professional_id, User.role == "professional").first()
@@ -631,7 +625,6 @@ def share_child_with_professional(
         if not professional:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Professional not found.")
         
-        # Add professional to child's professionals list if not already there
         if professional not in child.professionals:
             child.professionals.append(professional)
             db.commit()
@@ -655,7 +648,6 @@ def get_shared_children(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_professional),
 ):
-    """Professional views children shared with them directly"""
     try:
         return current_user.shared_children
     except SQLAlchemyError as exc:
@@ -670,7 +662,6 @@ def connect_parent_with_professional(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_parent),
 ):
-    """Parent associates themselves with a professional (mirrors child-share flow)."""
     try:
         professional = db.query(User).filter(
             User.id == request.professional_id, User.role == "professional"
@@ -701,7 +692,6 @@ def get_professional_dashboard(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_professional),
 ):
-    """Professional views summary: parents, children, observations."""
     try:
         parents = current_user.assigned_parents
         all_children = [c for p in parents for c in p.children]
@@ -720,7 +710,7 @@ def get_professional_dashboard(
             latest_observation_date = latest.observation_date if latest else None
 
         return {
-            "id": current_user.id,  # ADDED: Returns logged-in professional ID
+            "id": current_user.id,
             "total_parents": len(parents),
             "total_children": len(all_children),
             "total_observations": total_observations,
@@ -744,10 +734,6 @@ def get_professional_analytics(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_professional),
 ):
-    """Overall analytics for a professional: domain breakdown across ALL their
-    assigned children, plus a per-child summary (total observations, primary
-    domain, latest observation date). This is the 'necessary output based on
-    the observation' view for the professional's whole caseload."""
     try:
         parents = current_user.assigned_parents
         all_children = [c for p in parents for c in p.children]
@@ -764,7 +750,6 @@ def get_professional_analytics(
                 "children": [],
             }
 
-        # ---- Domain breakdown across every child this professional can see ----
         domain_rows = (
             db.query(Observation.domain, func.count(Observation.id))
             .filter(Observation.child_id.in_(child_ids))
@@ -775,7 +760,6 @@ def get_professional_analytics(
         domain_breakdown = [{"domain": d, "count": c} for d, c in domain_rows]
         total_observations = sum(c for _, c in domain_rows)
 
-        # ---- Overall observation trend (all children combined, by day) ----
         timeline_rows = (
             db.query(func.date(Observation.observation_date).label("date"), func.count(Observation.id).label("count"))
             .filter(Observation.child_id.in_(child_ids))
@@ -788,7 +772,6 @@ def get_professional_analytics(
             for item in timeline_rows
         ]
 
-        # ---- Observations rolled up per parent ----
         parent_rows = (
             db.query(User.id, User.full_name, User.email, func.count(Observation.id))
             .join(Child, Child.parent_id == User.id)
@@ -803,7 +786,6 @@ def get_professional_analytics(
             for pid, name, email, count in parent_rows
         ]
 
-        # ---- Per-child summary ----
         children_summary = []
         for child in all_children:
             child_domain_rows = (
@@ -830,7 +812,6 @@ def get_professional_analytics(
                 "latest_observation_date": latest.observation_date if latest else None,
             })
 
-        # Sort children by total_observations desc so the busiest cases surface first
         children_summary.sort(key=lambda c: c["total_observations"], reverse=True)
 
         return {
@@ -852,7 +833,6 @@ def get_children_for_assigned_parent(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_professional),
 ):
-    """Professional views children under one of their assigned parents."""
     try:
         parent = db.query(User).filter(User.id == parent_id, User.role == "parent").first()
         if not parent or parent.id not in {p.id for p in current_user.assigned_parents}:
@@ -869,7 +849,6 @@ def admin_dashboard(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    """Admin dashboard statistics"""
     try:
         total_users = db.query(User).count()
         parents = db.query(User).filter(User.role == "parent").count()
@@ -896,7 +875,6 @@ def admin_get_users(
     current_user: User = Depends(require_admin),
     role: str | None = Query(default=None),
 ):
-    """Admin views all users"""
     try:
         query = db.query(User)
         if role:
@@ -912,7 +890,6 @@ def admin_toggle_user_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    """Admin activate/deactivate user"""
     try:
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
@@ -941,7 +918,6 @@ def admin_get_activity_logs(
     current_user: User = Depends(require_admin),
     limit: int = Query(default=100, ge=1, le=1000),
 ):
-    """Admin views activity logs"""
     try:
         return db.query(ActivityLog).order_by(ActivityLog.timestamp.desc()).limit(limit).all()
     except SQLAlchemyError as exc:
@@ -956,7 +932,6 @@ def create_feedback(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Create feedback on an observation or AI response"""
     try:
         db_feedback = Feedback(
             user_id=current_user.id,
