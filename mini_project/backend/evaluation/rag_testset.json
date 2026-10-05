@@ -1,0 +1,34 @@
+[
+  {
+    "query": "How can caregivers promote communication in early childhood?",
+    "ground_truth_titles": ["9789240048911 Eng"]
+  },
+  {
+    "query": "What activities support turn-taking in toddlers?",
+    "ground_truth_titles": ["9789240002098 Eng"]
+  },
+  {
+    "query": "What are early indicators of motor skill development?",
+    "ground_truth_titles": ["9789240048911 Eng"]
+  },
+  {
+    "query": "How to handle challenging behavior and emotional regulation?",
+    "ground_truth_titles": ["9789240002098 Eng"]
+  },
+  {
+    "query": "What are key milestones for speech and language acquisition?",
+    "ground_truth_titles": ["9789240048911 Eng"]
+  },
+  {
+    "query": "How can parents support responsive caregiving and bonding?",
+    "ground_truth_titles": ["9789240002098 Eng"]
+  },
+  {
+    "query": "What strategies help develop fine motor coordination in young children?",
+    "ground_truth_titles": ["9789240048911 Eng"]
+  },
+  {
+    "query": "How to encourage social interaction and play with peers?",
+    "ground_truth_titles": ["9789240002098 Eng"]
+  }
+]

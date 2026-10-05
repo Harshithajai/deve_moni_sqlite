@@ -1,0 +1,27 @@
+# secrets
+.env
+*.env
+!.env.example
+
+# python envs / caches
+venv/
+.venv/
+backend/skip/
+backend/#/
+__pycache__/
+*.pyc
+
+# local databases and private student data
+*.db
+*.sqlite
+backend/login_credentials.csv
+backend/student_parent_details.csv
+
+# node
+node_modules/
+frontend/dist/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
