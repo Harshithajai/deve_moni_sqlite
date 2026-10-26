@@ -29,3 +29,37 @@ Set this variable in your Netlify Site configuration under **Site configuration 
 | Variable name | Where the value comes from | Notes |
 | :--- | :--- | :--- |
 | `VITE_API_URL` | Render Web Service URL | Set to your live Render backend URL (e.g., `https://devcare-api.onrender.com`). **Do not include a trailing slash**. Vite embeds this during build time for Axios API requests. |
+
+---
+
+## Importing the October 2026 school records
+
+The student records belong in the Render PostgreSQL database, not in GitHub.
+The importer reads the local `backend/devcare.db` and writes only the October
+2026 school daily records. It does not overwrite other tables or records.
+
+1. In the Render dashboard, open the PostgreSQL database and copy its
+   **External Database URL**. Use it only in a local PowerShell terminal; do not
+   paste it into chat, source code, or GitHub.
+2. From the repository root, set the URL for the current terminal session:
+
+   ```powershell
+   $env:RENDER_DATABASE_URL = Read-Host "Paste the Render External Database URL"
+   Set-Location .\mini_project\backend
+   ```
+
+3. First run a dry run. It does not write anything:
+
+   ```powershell
+   .\venv\Scripts\python.exe .\import_school_records.py
+   ```
+
+4. If the dry run reports the expected records, apply them:
+
+   ```powershell
+   .\venv\Scripts\python.exe .\import_school_records.py --apply
+   ```
+
+The importer checks student names and record dates before writing. It skips
+identical records if run again and stops if a student is missing or a conflicting
+record already exists. `--apply` is restricted to PostgreSQL targets.
